@@ -127,12 +127,45 @@ def sanitize_region(region):
     if width <= 0 or height <= 0:
         return None
 
+    screen = None
+    if isinstance(region, dict):
+        screen = region.get('_screen_bounds')
+
+    if screen is not None:
+        screen_left = int(screen['left'])
+        screen_top = int(screen['top'])
+        screen_right = screen_left + int(screen['width'])
+        screen_bottom = screen_top + int(screen['height'])
+
+        region_right = left + width
+        region_bottom = top + height
+
+        left = max(left, screen_left)
+        top = max(top, screen_top)
+        right = min(region_right, screen_right)
+        bottom = min(region_bottom, screen_bottom)
+
+        width = right - left
+        height = bottom - top
+
+        if width <= 0 or height <= 0:
+            return None
+
     return {
         'left': left,
         'top': top,
         'width': width,
         'height': height,
     }
+
+
+def screen_bounds_for_mss(sct):
+    monitors = getattr(sct, 'monitors', None)
+    if not monitors:
+        return None
+
+    # mss.monitors[0] is the virtual screen bounding box across all monitors.
+    return monitors[0]
 
 
 class RvizScreenPublisher(Node):
@@ -142,6 +175,7 @@ class RvizScreenPublisher(Node):
         self.pub = self.create_publisher(Image, CAPTURE_TOPIC, 10)
         self.bridge = CvBridge()
         self.sct = mss()
+        self.screen_bounds = screen_bounds_for_mss(self.sct)
 
         self.window_id = None
         self.window_name = None
@@ -185,6 +219,9 @@ class RvizScreenPublisher(Node):
             return
 
         new_window_id, new_region, new_window_name = found
+        if self.screen_bounds is not None:
+            new_region = dict(new_region)
+            new_region['_screen_bounds'] = self.screen_bounds
         new_region = sanitize_region(new_region)
 
         if new_region is None:
